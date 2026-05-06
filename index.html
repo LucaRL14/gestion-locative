@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion locative - Ransart</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="header-content">
+                <div>
+                    <h1>Gestion locative - Ransart</h1>
+                    <p class="subtitle" id="current-month-display">Mois en cours...</p>
+                </div>
+                <div class="actions">
+                    <button id="reset-data-btn" class="btn btn-outline" title="Réinitialiser les données">🔄 Réinitialiser</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard (KPIs) -->
+        <section class="dashboard">
+            <div class="kpi-card">
+                <div class="kpi-icon incomes">📈</div>
+                <div class="kpi-details">
+                    <h3>Revenus du mois</h3>
+                    <p class="kpi-value" id="kpi-revenus">0 €</p>
+                    <p class="kpi-subtext" id="kpi-revenus-attendu">sur 0 € attendus</p>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon expenses">📉</div>
+                <div class="kpi-details">
+                    <h3>Dépenses fixes</h3>
+                    <p class="kpi-value" id="kpi-depenses">0 €</p>
+                    <p class="kpi-subtext">Crédit, assurances, taxes</p>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon expenses" style="background: rgba(14, 165, 233, 0.15); color: #0ea5e9;">💧</div>
+                <div class="kpi-details">
+                    <h3>Dépenses variables</h3>
+                    <p class="kpi-value" id="kpi-depenses-var">0 €</p>
+                    <p class="kpi-subtext">Eau, élec, gaz, divers...</p>
+                </div>
+            </div>
+            <div class="kpi-card highlight">
+                <div class="kpi-icon cashflow">💰</div>
+                <div class="kpi-details">
+                    <h3>Cash-Flow Net</h3>
+                    <p class="kpi-value" id="kpi-cashflow">0 €</p>
+                    <p class="kpi-subtext" id="kpi-delta-charges" style="font-weight: 600; margin-top: 0.4rem; display: block;">Delta charges: 0 €</p>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon target">🎯</div>
+                <div class="kpi-details">
+                    <h3>Taux de paiement</h3>
+                    <p class="kpi-value" id="kpi-taux">0 %</p>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="kpi-progress"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Locataires List -->
+        <section class="locataires-section">
+            <div class="section-header">
+                <h2>Loyers perçus</h2>
+                <p class="section-subtitle">Validez la réception des paiements en un clic</p>
+            </div>
+            <div class="locataires-grid" id="locataires-container">
+                <!-- Les cartes locataires seront injectées ici par JavaScript -->
+            </div>
+        </section>
+
+        <!-- Garantie Locative -->
+        <section class="garantie-section" style="margin-top: 4rem;">
+            <div class="section-header">
+                <h2>Garantie locative</h2>
+                <p class="section-subtitle">Dépôts de garantie bloqués</p>
+            </div>
+            <div class="dashboard" style="margin-bottom: 0;">
+                <div class="kpi-card">
+                    <div class="kpi-icon highlight">🔒</div>
+                    <div class="kpi-details">
+                        <h3>Jules</h3>
+                        <p class="kpi-value">920 €</p>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon highlight">🔒</div>
+                    <div class="kpi-details">
+                        <h3>Thomas</h3>
+                        <p class="kpi-value">920 €</p>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon highlight">🔒</div>
+                    <div class="kpi-details">
+                        <h3>Maxime</h3>
+                        <p class="kpi-value">890 €</p>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon highlight">🔒</div>
+                    <div class="kpi-details">
+                        <h3>Sarah</h3>
+                        <p class="kpi-value">890 €</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

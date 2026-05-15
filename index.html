@@ -3,23 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion locative - Ransart</title>
+    <title>Gestion locative</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+    <!-- Tabs Navigation -->
+    <nav class="property-tabs-container">
+        <div class="property-tabs" id="property-tabs">
+            <!-- Tabs will be injected here -->
+        </div>
+        <button id="add-property-btn" class="btn btn-primary btn-sm" title="Ajouter un bien">+ Nouveau Bien</button>
+    </nav>
+
     <div class="app-container">
         <!-- Header -->
         <header>
             <div class="header-content">
                 <div>
-                    <h1>Gestion locative - Ransart</h1>
+                    <h1 id="property-title">Gestion locative</h1>
                     <p class="subtitle" id="current-month-display">Mois en cours...</p>
                 </div>
                 <div class="actions">
-                    <button id="reset-data-btn" class="btn btn-outline" title="Réinitialiser les données">🔄 Réinitialiser</button>
+                    <button id="reset-data-btn" class="btn btn-outline" title="Réinitialiser le mois">🔄 Réinitialiser le mois</button>
+                    <button id="logout-btn" class="btn btn-outline" style="display:none; border-color: var(--accent-danger); color: var(--accent-danger);" title="Se déconnecter">🚪 Déconnexion</button>
                 </div>
             </div>
         </header>
@@ -34,18 +44,18 @@
                     <p class="kpi-subtext" id="kpi-revenus-attendu">sur 0 € attendus</p>
                 </div>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card clickable" id="btn-edit-fixed-expenses" title="Gérer les dépenses fixes">
                 <div class="kpi-icon expenses">📉</div>
                 <div class="kpi-details">
-                    <h3>Dépenses fixes</h3>
+                    <h3>Dépenses fixes <span class="edit-icon">✏️</span></h3>
                     <p class="kpi-value" id="kpi-depenses">0 €</p>
-                    <p class="kpi-subtext">Crédit, assurances, taxes</p>
+                    <p class="kpi-subtext">Crédit, assurances, taxes...</p>
                 </div>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card clickable" id="btn-edit-variable-expenses" title="Gérer les dépenses variables">
                 <div class="kpi-icon expenses" style="background: rgba(14, 165, 233, 0.15); color: #0ea5e9;">💧</div>
                 <div class="kpi-details">
-                    <h3>Dépenses variables</h3>
+                    <h3>Dépenses variables <span class="edit-icon">✏️</span></h3>
                     <p class="kpi-value" id="kpi-depenses-var">0 €</p>
                     <p class="kpi-subtext">Eau, élec, gaz, divers...</p>
                 </div>
@@ -72,9 +82,12 @@
 
         <!-- Locataires List -->
         <section class="locataires-section">
-            <div class="section-header">
-                <h2>Loyers perçus</h2>
-                <p class="section-subtitle">Validez la réception des paiements en un clic</p>
+            <div class="section-header flex-between">
+                <div>
+                    <h2>Loyers perçus</h2>
+                    <p class="section-subtitle">Validez la réception des paiements en un clic</p>
+                </div>
+                <button id="add-tenant-btn" class="btn btn-primary">+ Ajouter un locataire</button>
             </div>
             <div class="locataires-grid" id="locataires-container">
                 <!-- Les cartes locataires seront injectées ici par JavaScript -->
@@ -85,39 +98,143 @@
         <section class="garantie-section" style="margin-top: 4rem;">
             <div class="section-header">
                 <h2>Garantie locative</h2>
-                <p class="section-subtitle">Dépôts de garantie bloqués</p>
+                <p class="section-subtitle">Dépôts de garantie bloqués (Cliquez pour éditer)</p>
             </div>
-            <div class="dashboard" style="margin-bottom: 0;">
-                <div class="kpi-card">
-                    <div class="kpi-icon highlight">🔒</div>
-                    <div class="kpi-details">
-                        <h3>Jules</h3>
-                        <p class="kpi-value">920 €</p>
-                    </div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-icon highlight">🔒</div>
-                    <div class="kpi-details">
-                        <h3>Thomas</h3>
-                        <p class="kpi-value">920 €</p>
-                    </div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-icon highlight">🔒</div>
-                    <div class="kpi-details">
-                        <h3>Maxime</h3>
-                        <p class="kpi-value">890 €</p>
-                    </div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-icon highlight">🔒</div>
-                    <div class="kpi-details">
-                        <h3>Sarah</h3>
-                        <p class="kpi-value">890 €</p>
-                    </div>
-                </div>
+            <div class="dashboard" id="garanties-container" style="margin-bottom: 0;">
+                <!-- Cautions injectées ici -->
             </div>
         </section>
+    </div>
+
+    <!-- Modals -->
+    <!-- Modal Propriété -->
+    <div id="modal-property" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-property-title">Ajouter un bien</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Nom du bien :</label>
+                    <input type="text" id="prop-name" class="form-control" placeholder="ex: Appartement Paris">
+                </div>
+                <div class="form-group">
+                    <label>Provision mensuelle pour charges par locataire (€) :</label>
+                    <input type="number" id="prop-provision" class="form-control" value="125" step="0.01">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline close-modal-btn">Annuler</button>
+                <button id="save-property-btn" class="btn btn-primary">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Locataire -->
+    <div id="modal-tenant" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-tenant-title">Ajouter/Modifier un locataire</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="tenant-id">
+                <div class="form-group">
+                    <label>Nom du locataire :</label>
+                    <input type="text" id="tenant-name" class="form-control" placeholder="ex: Jules">
+                </div>
+                <div class="form-group">
+                    <label>Loyer mensuel (€) :</label>
+                    <input type="number" id="tenant-rent" class="form-control" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Jour de paiement (1-31) :</label>
+                    <input type="number" id="tenant-day" class="form-control" min="1" max="31">
+                </div>
+                <div class="form-group">
+                    <label>Garantie locative (€) :</label>
+                    <input type="number" id="tenant-deposit" class="form-control" step="0.01">
+                </div>
+            </div>
+            <div class="modal-footer flex-between">
+                <button id="delete-tenant-btn" class="btn btn-danger" style="display:none;">Supprimer</button>
+                <div>
+                    <button class="btn btn-outline close-modal-btn">Annuler</button>
+                    <button id="save-tenant-btn" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Dépenses -->
+    <div id="modal-expenses" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-expenses-title">Gérer les dépenses</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="expenses-list" id="expenses-list">
+                    <!-- Liste des dépenses injectée ici -->
+                </div>
+                <div class="add-expense-form">
+                    <h4>Ajouter une dépense</h4>
+                    <div class="form-row">
+                        <input type="text" id="new-expense-name" class="form-control" placeholder="Nom (ex: Internet)">
+                        <input type="number" id="new-expense-amount" class="form-control" placeholder="Montant (€)" step="0.01">
+                        <button id="add-expense-btn" class="btn btn-success">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary close-modal-btn">Terminer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Garantie -->
+    <div id="modal-guarantee" class="modal">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h2>Modifier la garantie</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="guarantee-tenant-id">
+                <div class="form-group">
+                    <label>Nouveau montant (€) :</label>
+                    <input type="number" id="guarantee-amount" class="form-control" step="0.01">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline close-modal-btn">Annuler</button>
+                <button id="save-guarantee-btn" class="btn btn-primary">Enregistrer</button>
+            </div>
+        </div>
+    <!-- Modal Auth (Login/Signup) -->
+    <div id="modal-auth" class="modal" style="display: none;">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h2>Connexion / Inscription</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Email :</label>
+                    <input type="email" id="auth-email" class="form-control" placeholder="votre@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe :</label>
+                    <input type="password" id="auth-password" class="form-control" placeholder="••••••" required>
+                </div>
+                <p id="auth-error" style="color: var(--accent-danger); font-size: 0.9rem; display: none;"></p>
+                <p id="auth-message" style="color: var(--accent-success); font-size: 0.9rem; display: none;"></p>
+            </div>
+            <div class="modal-footer flex-between">
+                <button id="auth-signup-btn" class="btn btn-outline">S'inscrire</button>
+                <button id="auth-login-btn" class="btn btn-primary">Se connecter</button>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

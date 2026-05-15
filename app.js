@@ -1,301 +1,359 @@
-// --- Configuration & Données Initiales ---
-const CHARGES_PROVISION = 125; // Provision pour charges par locataire
-const DEPENSES_VARIABLES = 484.99; // Eau, elec, gaz, netflix, etc.
-const FRAIS_ANNUELS_MENSUALISES = 171.26; // Assurances, taxes / 12
+// --- Configuration & État Global ---
+const SUPABASE_URL = 'https://rpqjcmycfpmeqsqjnigg.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwcWpjbXljZnBtZXFzcWpuaWdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzM2NTIsImV4cCI6MjA5NDQwOTY1Mn0.5Z3VFXGHmfeAaTSMJqO0i5Wf6BwWfGrZz9uq6GAIcG8';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function getDepensesFixes(cleMois) {
-    const [annee, mois] = cleMois.split('-').map(Number);
-    let credit = 614;
-    // À partir de septembre 2026, le crédit passe à 1010
-    if (annee > 2026 || (annee === 2026 && mois >= 9)) {
-        credit = 1010;
-    }
-    return FRAIS_ANNUELS_MENSUALISES + credit;
-}
+let currentUser = null;
 
-// Locataires fictifs
-const LOCATAIRES_INITIAUX = [
-    { id: '1', nom: 'Chambre 1 - Jules', loyer: 585, jourPaiement: 1, statut: 'pending' }, // pending, paid, unpaid
-    { id: '2', nom: 'Chambre 2 - Thomas', loyer: 585, jourPaiement: 1, statut: 'pending' },
-    { id: '3', nom: 'Chambre 3 - Maxime', loyer: 570, jourPaiement: 5, statut: 'pending' },
-    { id: '4', nom: 'Chambre 4 - Sarah', loyer: 570, jourPaiement: 1, statut: 'pending' }
-
-];
-
-// --- Gestion de l'état (State) ---
-let state = {
-    moisActuel: '',
-    cleMois: '', // Format YYYY-MM pour faciliter le tri
-    locataires: []
+let appState = {
+    activePropertyId: null,
+    properties: []
 };
 
-// Initialisation au chargement
+let currentMonth = '';
+let currentMonthKey = '';
+
+// Données initiales par défaut (un bien vide)
+const DEFAULT_PROPERTIES = [
+    {
+        id: 'prop_' + Date.now(),
+        name: 'Mon Premier Bien',
+        provisionCharges: 125,
+        tenants: [],
+        fixedExpenses: [],
+        variableExpenses: []
+    }
+];
+
+// État mensuel des paiements (statut des locataires)
+let monthlyStatus = {}; // { tenantId: 'pending'|'paid'|'unpaid' }
+
+// --- Initialisation ---
 document.addEventListener('DOMContentLoaded', () => {
-    initApp();
+    initAuth();
 });
 
-function initApp() {
-    // Déterminer le mois actuel (ex: "Mai 2026")
+function initAuth() {
+    // Bind UI buttons
+    document.getElementById('auth-signup-btn').onclick = handleSignUp;
+    document.getElementById('auth-login-btn').onclick = handleLogin;
+    document.getElementById('logout-btn').onclick = handleLogout;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+        handleAuthSession(session);
+    });
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+        handleAuthSession(session);
+    });
+}
+
+function handleAuthSession(session) {
+    if (session) {
+        currentUser = session.user;
+        document.getElementById('modal-auth').style.display = 'none';
+        document.getElementById('logout-btn').style.display = 'inline-flex';
+        initApp(); // Load data when auth is confirmed
+    } else {
+        currentUser = null;
+        document.getElementById('modal-auth').style.display = 'flex';
+        document.getElementById('logout-btn').style.display = 'none';
+        
+        // Clear UI data
+        appState.properties = [];
+        appState.activePropertyId = null;
+        renderTabs();
+        document.getElementById('property-title').textContent = "Veuillez vous connecter";
+        document.getElementById('locataires-container').innerHTML = '';
+        document.getElementById('garanties-container').innerHTML = '';
+        document.getElementById('kpi-revenus').textContent = '0 €';
+        document.getElementById('kpi-depenses').textContent = '0 €';
+        document.getElementById('kpi-depenses-var').textContent = '0 €';
+        document.getElementById('kpi-cashflow').textContent = '0 €';
+        document.getElementById('kpi-taux').textContent = '0 %';
+        document.getElementById('kpi-progress').style.width = '0%';
+    }
+}
+
+async function handleSignUp() {
+    const email = document.getElementById('auth-email').value;
+    const password = document.getElementById('auth-password').value;
+    const errEl = document.getElementById('auth-error');
+    const msgEl = document.getElementById('auth-message');
+    errEl.style.display = 'none';
+    msgEl.style.display = 'none';
+
+    if (!email || !password) return (errEl.textContent = 'Email et mot de passe requis', errEl.style.display = 'block');
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+        errEl.textContent = error.message;
+        errEl.style.display = 'block';
+    } else {
+        msgEl.textContent = 'Inscription réussie ! Vous êtes connecté.';
+        msgEl.style.display = 'block';
+    }
+}
+
+async function handleLogin() {
+    const email = document.getElementById('auth-email').value;
+    const password = document.getElementById('auth-password').value;
+    const errEl = document.getElementById('auth-error');
+    errEl.style.display = 'none';
+
+    if (!email || !password) return (errEl.textContent = 'Email et mot de passe requis', errEl.style.display = 'block');
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+        errEl.textContent = error.message;
+        errEl.style.display = 'block';
+    }
+}
+
+async function handleLogout() {
+    await supabase.auth.signOut();
+}
+
+async function initApp() {
+    // Mois actuel
     const now = new Date();
     const optionsMois = { month: 'long', year: 'numeric' };
     const moisFormat = now.toLocaleDateString('fr-FR', optionsMois);
-    // Majuscule sur la première lettre du mois
-    state.moisActuel = moisFormat.charAt(0).toUpperCase() + moisFormat.slice(1);
-
-    // Format YYYY-MM
+    currentMonth = moisFormat.charAt(0).toUpperCase() + moisFormat.slice(1);
+    
     const moisNum = String(now.getMonth() + 1).padStart(2, '0');
-    state.cleMois = `${now.getFullYear()}-${moisNum}`;
+    currentMonthKey = `${now.getFullYear()}-${moisNum}`;
 
-    document.getElementById('current-month-display').textContent = `Mois en cours : ${state.moisActuel}`;
+    document.getElementById('current-month-display').textContent = `Mois en cours : ${currentMonth}`;
 
-    // Injecter l'historique initial si ce n'est pas déjà fait
-    seedHistorique();
+    setupEventListeners();
 
-    // Charger les données du LocalStorage ou initialiser
-    chargerDonnees();
+    // Chargement des données globales (biens, locataires, etc.)
+    await loadGlobalData();
+    
+    // Chargement du statut des paiements pour ce mois
+    await loadMonthlyStatus();
 
-    // Mettre en place les écouteurs d'événements
-    document.getElementById('reset-data-btn').addEventListener('click', reinitialiserDonnees);
-
-    // Premier rendu
-    render();
-}
-
-// --- Fonctions Métier ---
-
-function seedHistorique() {
-    if (localStorage.getItem('seeded_v1_ransart')) return;
-
-    const histData = {
-        'gestion_loc_2026-02': [
-            { id: '1', nom: 'Chambre 1 - Jules', loyer: 585, jourPaiement: 1, statut: 'paid' },
-            { id: '2', nom: 'Chambre 2 - Thomas', loyer: 585, jourPaiement: 1, statut: 'paid' },
-            { id: '3', nom: 'Chambre 3 - Maxime', loyer: 142.5, jourPaiement: 5, statut: 'paid' }
-        ],
-        'gestion_loc_2026-03': [
-            { id: '1', nom: 'Chambre 1 - Jules', loyer: 585, jourPaiement: 1, statut: 'paid' },
-            { id: '2', nom: 'Chambre 2 - Thomas', loyer: 585, jourPaiement: 1, statut: 'paid' },
-            { id: '3', nom: 'Chambre 3 - Maxime', loyer: 570, jourPaiement: 5, statut: 'paid' },
-            { id: '4', nom: 'Chambre 4 - Sarah', loyer: 427.5, jourPaiement: 1, statut: 'paid' }
-        ],
-        'gestion_loc_2026-04': [
-            { id: '1', nom: 'Chambre 1 - Jules', loyer: 585, jourPaiement: 1, statut: 'paid' },
-            { id: '2', nom: 'Chambre 2 - Thomas', loyer: 585, jourPaiement: 1, statut: 'paid' },
-            { id: '3', nom: 'Chambre 3 - Maxime', loyer: 570, jourPaiement: 5, statut: 'paid' },
-            { id: '4', nom: 'Chambre 4 - Sarah', loyer: 570, jourPaiement: 1, statut: 'paid' }
-        ],
-        'gestion_loc_2026-05': [
-            { id: '1', nom: 'Chambre 1 - Jules', loyer: 585, jourPaiement: 1, statut: 'pending' },
-            { id: '2', nom: 'Chambre 2 - Thomas', loyer: 585, jourPaiement: 1, statut: 'paid' },
-            { id: '3', nom: 'Chambre 3 - Maxime', loyer: 570, jourPaiement: 5, statut: 'paid' },
-            { id: '4', nom: 'Chambre 4 - Sarah', loyer: 570, jourPaiement: 1, statut: 'paid' }
-        ]
-    };
-
-    for (let key in histData) {
-        localStorage.setItem(key, JSON.stringify(histData[key]));
+    renderTabs();
+    if (appState.properties.length > 0) {
+        if (!appState.activePropertyId || !appState.properties.find(p => p.id === appState.activePropertyId)) {
+            appState.activePropertyId = appState.properties[0].id;
+        }
+        renderActiveProperty();
     }
-    localStorage.setItem('seeded_v1_ransart', 'true');
 }
 
-function chargerDonnees() {
-    const savedData = localStorage.getItem(`gestion_loc_${state.cleMois}`);
+// --- Chargement et Sauvegarde ---
 
-    if (savedData) {
-        state.locataires = JSON.parse(savedData);
+async function loadGlobalData() {
+    if (!currentUser) return;
+    
+    const { data, error } = await supabase
+        .from('properties')
+        .select('*');
+        
+    if (error) {
+        console.error("Erreur de chargement:", error);
+        return;
+    }
+    
+    if (data && data.length > 0) {
+        appState.properties = data.map(dbProp => ({
+            id: dbProp.id,
+            name: dbProp.name,
+            provisionCharges: dbProp.provision_charges,
+            tenants: dbProp.tenants || [],
+            fixedExpenses: dbProp.fixed_expenses || [],
+            variableExpenses: dbProp.variable_expenses || []
+        }));
     } else {
-        // Pas de données pour ce mois, on initialise avec les locataires par défaut
-        // en remettant tout le monde en attente
-        state.locataires = JSON.parse(JSON.stringify(LOCATAIRES_INITIAUX));
-        sauvegarderDonnees();
+        // App vierge (empty property default)
+        const emptyProp = {
+            id: 'prop_' + Date.now(),
+            name: 'Mon Premier Bien',
+            provisionCharges: 125,
+            tenants: [],
+            fixedExpenses: [],
+            variableExpenses: []
+        };
+        appState.properties = [emptyProp];
+        appState.activePropertyId = emptyProp.id;
+        await saveGlobalData();
     }
 }
 
-function sauvegarderDonnees() {
-    localStorage.setItem(`gestion_loc_${state.cleMois}`, JSON.stringify(state.locataires));
-}
+async function saveGlobalData() {
+    if (!currentUser) return;
+    
+    const upserts = appState.properties.map(p => ({
+        id: p.id,
+        user_id: currentUser.id,
+        name: p.name,
+        provision_charges: p.provisionCharges,
+        tenants: p.tenants,
+        fixed_expenses: p.fixedExpenses,
+        variable_expenses: p.variableExpenses,
+        updated_at: new Date()
+    }));
 
-function reinitialiserDonnees() {
-    if (confirm('Voulez-vous vraiment réinitialiser les paiements pour ce mois-ci ?')) {
-        state.locataires = JSON.parse(JSON.stringify(LOCATAIRES_INITIAUX));
-        sauvegarderDonnees();
-        render();
+    const { error } = await supabase.from('properties').upsert(upserts);
+    if (error) {
+        console.error("Erreur de sauvegarde:", error);
+        alert("Erreur lors de la sauvegarde des données.");
     }
 }
 
-function setStatut(id, nouveauStatut) {
-    const locataire = state.locataires.find(l => l.id === id);
-    if (locataire) {
-        locataire.statut = nouveauStatut;
-        sauvegarderDonnees();
-        render(); // Re-render partiel ou total
+async function loadMonthlyStatus() {
+    if (!currentUser) return;
+    const { data, error } = await supabase
+        .from('monthly_status')
+        .select('status_data')
+        .eq('month_key', currentMonthKey)
+        .single();
+        
+    if (data) {
+        monthlyStatus = data.status_data || {};
+    } else {
+        monthlyStatus = {};
     }
 }
 
-// --- Calculs KPI ---
+async function saveMonthlyStatus() {
+    if (!currentUser) return;
+    const id = `${currentUser.id}_${currentMonthKey}`;
+    const { error } = await supabase.from('monthly_status').upsert({
+        id: id,
+        user_id: currentUser.id,
+        month_key: currentMonthKey,
+        status_data: monthlyStatus,
+        updated_at: new Date()
+    });
+    if (error) console.error("Erreur sauvegarde statut", error);
+}
 
-function calculerKPI() {
+// --- Helpers ---
+function getActiveProperty() {
+    return appState.properties.find(p => p.id === appState.activePropertyId);
+}
+
+function getTenantStatus(tenantId) {
+    return monthlyStatus[tenantId] || 'pending';
+}
+
+// --- Rendu ---
+
+function renderTabs() {
+    const container = document.getElementById('property-tabs');
+    container.innerHTML = '';
+    
+    appState.properties.forEach(prop => {
+        const btn = document.createElement('button');
+        btn.className = `tab-btn ${prop.id === appState.activePropertyId ? 'active' : ''}`;
+        btn.textContent = prop.name;
+        btn.onclick = () => {
+            appState.activePropertyId = prop.id;
+            saveGlobalData();
+            renderTabs();
+            renderActiveProperty();
+        };
+        container.appendChild(btn);
+    });
+}
+
+function renderActiveProperty() {
+    const prop = getActiveProperty();
+    if (!prop) return;
+
+    document.getElementById('property-title').innerHTML = `Gestion locative - ${prop.name} <span class="edit-icon" style="opacity: 1; cursor:pointer; font-size: 0.8em; margin-left: 10px;" onclick="deleteProperty('${prop.id}')" title="Supprimer ce bien">✏️</span>`;
+
+    // Calculs
     let revenusAttendus = 0;
     let revenusReels = 0;
     let locatairesPayes = 0;
 
-    state.locataires.forEach(l => {
-        revenusAttendus += l.loyer;
-        if (l.statut === 'paid') {
-            revenusReels += l.loyer;
+    prop.tenants.forEach(t => {
+        revenusAttendus += t.rent;
+        const status = getTenantStatus(t.id);
+        if (status === 'paid') {
+            revenusReels += t.rent;
             locatairesPayes++;
         }
     });
 
-    const depensesFixes = getDepensesFixes(state.cleMois);
-    const provisionsRecues = locatairesPayes * CHARGES_PROVISION;
+    const totalFixed = prop.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalVar = prop.variableExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+    const provisionsRecues = locatairesPayes * prop.provisionCharges;
     const loyersNets = revenusReels - provisionsRecues;
+    const cashFlow = loyersNets - totalFixed;
+    const deltaCharges = provisionsRecues - totalVar;
     
-    // Cash flow = Loyers nets - Dépenses fixes mensuelles
-    const cashFlow = loyersNets - depensesFixes;
-    
-    // Delta sur charges variables
-    const deltaCharges = provisionsRecues - DEPENSES_VARIABLES;
-    
-    const tauxPaiement = state.locataires.length > 0
-        ? Math.round((locatairesPayes / state.locataires.length) * 100)
+    const tauxPaiement = prop.tenants.length > 0 
+        ? Math.round((locatairesPayes / prop.tenants.length) * 100) 
         : 0;
 
-    return { revenusAttendus, revenusReels, cashFlow, depensesFixes, deltaCharges, tauxPaiement };
-}
-
-function getHistorique(id) {
-    let historique = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        let key = localStorage.key(i);
-        // On récupère toutes les clés qui commencent par gestion_loc_ mais qui ne sont pas le mois en cours
-        // et on évite les anciennes clés (ex: gestion_loc_Mai 2026) en filtrant par le format
-        if (key.startsWith('gestion_loc_2') && key !== `gestion_loc_${state.cleMois}`) {
-            let monthKey = key.replace('gestion_loc_', ''); // e.g. 2026-04
-            try {
-                let data = JSON.parse(localStorage.getItem(key));
-                let locataire = data.find(l => l.id === id);
-                if (locataire) {
-                    historique.push({
-                        monthLabel: monthKey.split('-').reverse().join('/'), // 04/2026
-                        monthKey: monthKey,
-                        statut: locataire.statut
-                    });
-                }
-            } catch (e) {
-                // Ignore parse errors
-            }
-        }
-    }
-    // Tri chronologique
-    historique.sort((a, b) => a.monthKey.localeCompare(b.monthKey));
-    // On garde uniquement les 4 derniers mois
-    return historique.slice(-4);
-}
-
-// --- Rendu UI (Affichage) ---
-
-function render() {
-    const kpis = calculerKPI();
-
-    // Rendu KPIs
-    document.getElementById('kpi-revenus').textContent = `${kpis.revenusReels} €`;
-    document.getElementById('kpi-revenus-attendu').textContent = `sur ${kpis.revenusAttendus} € attendus`;
+    // Mise à jour KPIs
+    document.getElementById('kpi-revenus').textContent = `${revenusReels} €`;
+    document.getElementById('kpi-revenus-attendu').textContent = `sur ${revenusAttendus} € attendus`;
     
-    document.getElementById('kpi-depenses').textContent = `${kpis.depensesFixes.toFixed(2).replace('.', ',')} €`;
-    if (document.getElementById('kpi-depenses-var')) {
-        document.getElementById('kpi-depenses-var').textContent = `${DEPENSES_VARIABLES.toFixed(2).replace('.', ',')} €`;
-    }
+    document.getElementById('kpi-depenses').textContent = `${totalFixed.toFixed(2).replace('.', ',')} €`;
+    document.getElementById('kpi-depenses-var').textContent = `${totalVar.toFixed(2).replace('.', ',')} €`;
 
-    // Cash Flow avec couleur dynamique
     const kpiCashFlow = document.getElementById('kpi-cashflow');
-    const signeCf = kpis.cashFlow > 0 ? '+' : '';
-    kpiCashFlow.textContent = `${signeCf}${kpis.cashFlow.toFixed(2).replace('.', ',')} €`;
-    if (kpis.cashFlow > 0) {
-        kpiCashFlow.style.color = 'var(--accent-success)';
-    } else if (kpis.cashFlow < 0) {
-        kpiCashFlow.style.color = 'var(--accent-danger)';
-    } else {
-        kpiCashFlow.style.color = 'var(--text-primary)';
-    }
+    const signeCf = cashFlow > 0 ? '+' : '';
+    kpiCashFlow.textContent = `${signeCf}${cashFlow.toFixed(2).replace('.', ',')} €`;
+    kpiCashFlow.style.color = cashFlow > 0 ? 'var(--accent-success)' : (cashFlow < 0 ? 'var(--accent-danger)' : 'var(--text-primary)');
 
-    // Delta Charges
     const kpiDelta = document.getElementById('kpi-delta-charges');
-    if (kpiDelta) {
-        const signeDelta = kpis.deltaCharges > 0 ? '+' : '';
-        kpiDelta.textContent = `Delta charges: ${signeDelta}${kpis.deltaCharges.toFixed(2).replace('.', ',')} €`;
-        if (kpis.deltaCharges > 0) {
-            kpiDelta.style.color = 'var(--accent-success)';
-        } else if (kpis.deltaCharges < 0) {
-            kpiDelta.style.color = 'var(--accent-danger)';
-        } else {
-            kpiDelta.style.color = 'inherit';
-        }
-    }
+    const signeDelta = deltaCharges > 0 ? '+' : '';
+    kpiDelta.textContent = `Delta charges: ${signeDelta}${deltaCharges.toFixed(2).replace('.', ',')} €`;
+    kpiDelta.style.color = deltaCharges > 0 ? 'var(--accent-success)' : (deltaCharges < 0 ? 'var(--accent-danger)' : 'inherit');
 
-    document.getElementById('kpi-taux').textContent = `${kpis.tauxPaiement} %`;
-    document.getElementById('kpi-progress').style.width = `${kpis.tauxPaiement}%`;
+    document.getElementById('kpi-taux').textContent = `${tauxPaiement} %`;
+    document.getElementById('kpi-progress').style.width = `${tauxPaiement}%`;
 
-    // Rendu Liste Locataires
-    const container = document.getElementById('locataires-container');
-    container.innerHTML = ''; // Clear
+    // Loyers
+    const locatairesContainer = document.getElementById('locataires-container');
+    locatairesContainer.innerHTML = '';
 
-    state.locataires.forEach((locataire, index) => {
-        // Déterminer les classes du badge et du texte
+    prop.tenants.forEach((t, i) => {
+        const status = getTenantStatus(t.id);
         let badgeClass = 'pending';
         let badgeText = '⏱️ En attente';
+        if (status === 'paid') { badgeClass = 'paid'; badgeText = '✅ Payé'; }
+        else if (status === 'unpaid') { badgeClass = 'unpaid'; badgeText = '❌ Impayé'; }
 
-        if (locataire.statut === 'paid') {
-            badgeClass = 'paid';
-            badgeText = '✅ Payé';
-        } else if (locataire.statut === 'unpaid') {
-            badgeClass = 'unpaid';
-            badgeText = '❌ Impayé / Retard';
+        let historyHTML = '';
+        if (t.history && t.history.length > 0) {
+            const dots = t.history.map(h => `
+                <div class="history-month" title="${h.month}">
+                    <span class="history-dot ${h.status}"></span>
+                    <span>${h.month}</span>
+                </div>
+            `).join('');
+            historyHTML = `
+                <div class="locataire-history">
+                    <div class="history-title">Historique des paiements</div>
+                    <div class="history-dots">
+                        ${dots}
+                    </div>
+                </div>
+            `;
         }
 
         const card = document.createElement('div');
         card.className = 'locataire-card';
-        card.style.animationDelay = `${index * 0.1}s`;
-
-        // Récupérer l'historique
-        const histo = getHistorique(locataire.id);
-        let historiqueHtml = '';
-        if (histo.length > 0) {
-            const dotsHtml = histo.map(h => `
-                <div class="history-month" title="${h.monthLabel}">
-                    <div class="history-dot ${h.statut}"></div>
-                    <span>${h.monthLabel.substring(0, 2)}</span>
-                </div>
-            `).join('');
-
-            historiqueHtml = `
-                <div class="locataire-history">
-                    <div class="history-title">Historique récent</div>
-                    <div class="history-dots">
-                        ${dotsHtml}
-                    </div>
-                </div>
-            `;
-        } else {
-            historiqueHtml = `
-                <div class="locataire-history">
-                    <div class="history-title">Historique récent</div>
-                    <div class="history-dots">
-                        <span style="font-size: 0.8rem; color: var(--text-secondary);">Pas d'historique</span>
-                    </div>
-                </div>
-            `;
-        }
+        card.style.animationDelay = `${i * 0.1}s`;
 
         card.innerHTML = `
             <div class="locataire-header">
                 <div class="locataire-info">
-                    <h3>${locataire.nom}</h3>
+                    <h3>${t.name} <span class="edit-icon" style="opacity: 1; cursor:pointer;" onclick="openTenantModal('${t.id}')">✏️</span></h3>
                     <div class="locataire-meta">
-                        <span>📅 Attendu le ${locataire.jourPaiement} du mois</span>
+                        <span>📅 Attendu le ${t.paymentDay} du mois</span>
                     </div>
                 </div>
-                <div class="locataire-amount">${locataire.loyer} €</div>
+                <div class="locataire-amount">${t.rent} €</div>
             </div>
             
             <div class="status-badge ${badgeClass}">
@@ -303,19 +361,274 @@ function render() {
             </div>
 
             <div class="locataire-actions">
-                <button class="btn-action btn-success ${locataire.statut === 'paid' ? 'active' : ''}" 
-                        onclick="setStatut('${locataire.id}', 'paid')">
+                <button class="btn-action btn-success ${status === 'paid' ? 'active' : ''}" 
+                        onclick="setTenantStatus('${t.id}', 'paid')">
                     ✅ Reçu
                 </button>
-                <button class="btn-action btn-danger ${locataire.statut === 'unpaid' ? 'active' : ''}" 
-                        onclick="setStatut('${locataire.id}', 'unpaid')">
+                <button class="btn-action btn-danger ${status === 'unpaid' ? 'active' : ''}" 
+                        onclick="setTenantStatus('${t.id}', 'unpaid')">
                     ❌ Non reçu
                 </button>
             </div>
             
-            ${historiqueHtml}
+            ${historyHTML}
         `;
+        locatairesContainer.appendChild(card);
+    });
 
-        container.appendChild(card);
+    // Garanties
+    const garantiesContainer = document.getElementById('garanties-container');
+    garantiesContainer.innerHTML = '';
+    prop.tenants.forEach(t => {
+        const card = document.createElement('div');
+        card.className = 'kpi-card clickable';
+        card.onclick = () => openGuaranteeModal(t.id);
+        card.innerHTML = `
+            <div class="kpi-icon highlight">🔒</div>
+            <div class="kpi-details">
+                <h3>${t.name} <span class="edit-icon">✏️</span></h3>
+                <p class="kpi-value">${t.deposit} €</p>
+            </div>
+        `;
+        garantiesContainer.appendChild(card);
     });
 }
+
+function setTenantStatus(tenantId, status) {
+    monthlyStatus[tenantId] = status;
+    saveMonthlyStatus();
+    renderActiveProperty();
+}
+
+// --- Événements et Modales ---
+
+function setupEventListeners() {
+    // Reset
+    document.getElementById('reset-data-btn').onclick = () => {
+        if (confirm("Réinitialiser tous les statuts de paiement du mois en cours ?")) {
+            monthlyStatus = {};
+            saveMonthlyStatus();
+            renderActiveProperty();
+        }
+    };
+
+    // Fermeture modales
+    document.querySelectorAll('.close-modal, .close-modal-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.modal').forEach(m => m.classList.remove('show'));
+        };
+    });
+
+    // Modal Propriété
+    document.getElementById('add-property-btn').onclick = () => {
+        document.getElementById('modal-property-title').textContent = "Ajouter un bien";
+        document.getElementById('prop-name').value = '';
+        document.getElementById('prop-provision').value = '125';
+        document.getElementById('modal-property').classList.add('show');
+    };
+
+    document.getElementById('save-property-btn').onclick = () => {
+        const name = document.getElementById('prop-name').value;
+        const provision = parseFloat(document.getElementById('prop-provision').value) || 0;
+        if (!name) return alert('Le nom est requis');
+
+        const newProp = {
+            id: 'prop_' + Date.now(),
+            name,
+            provisionCharges: provision,
+            tenants: [],
+            fixedExpenses: [],
+            variableExpenses: []
+        };
+        appState.properties.push(newProp);
+        appState.activePropertyId = newProp.id;
+        saveGlobalData();
+        document.getElementById('modal-property').classList.remove('show');
+        renderTabs();
+        renderActiveProperty();
+    };
+
+    // Modal Locataire
+    document.getElementById('add-tenant-btn').onclick = () => openTenantModal(null);
+
+    document.getElementById('save-tenant-btn').onclick = () => {
+        const prop = getActiveProperty();
+        const id = document.getElementById('tenant-id').value;
+        const name = document.getElementById('tenant-name').value;
+        const rent = parseFloat(document.getElementById('tenant-rent').value) || 0;
+        const day = parseInt(document.getElementById('tenant-day').value) || 1;
+        const deposit = parseFloat(document.getElementById('tenant-deposit').value) || 0;
+
+        if (!name) return alert('Nom requis');
+
+        if (id) {
+            const t = prop.tenants.find(x => x.id === id);
+            t.name = name; t.rent = rent; t.paymentDay = day; t.deposit = deposit;
+        } else {
+            prop.tenants.push({
+                id: 't_' + Date.now(),
+                name, rent, paymentDay: day, deposit
+            });
+        }
+        saveGlobalData();
+        document.getElementById('modal-tenant').classList.remove('show');
+        renderActiveProperty();
+    };
+
+    document.getElementById('delete-tenant-btn').onclick = () => {
+        const id = document.getElementById('tenant-id').value;
+        if (confirm("Supprimer ce locataire ?")) {
+            const prop = getActiveProperty();
+            prop.tenants = prop.tenants.filter(t => t.id !== id);
+            saveGlobalData();
+            document.getElementById('modal-tenant').classList.remove('show');
+            renderActiveProperty();
+        }
+    };
+
+    // Modal Garanties
+    document.getElementById('save-guarantee-btn').onclick = () => {
+        const prop = getActiveProperty();
+        const id = document.getElementById('guarantee-tenant-id').value;
+        const deposit = parseFloat(document.getElementById('guarantee-amount').value) || 0;
+        const t = prop.tenants.find(x => x.id === id);
+        if (t) t.deposit = deposit;
+        saveGlobalData();
+        document.getElementById('modal-guarantee').classList.remove('show');
+        renderActiveProperty();
+    };
+
+    // Modal Dépenses (Fixes)
+    document.getElementById('btn-edit-fixed-expenses').onclick = () => openExpensesModal('fixed');
+    
+    // Modal Dépenses (Variables)
+    document.getElementById('btn-edit-variable-expenses').onclick = () => openExpensesModal('variable');
+}
+
+let currentExpenseType = 'fixed';
+
+function openTenantModal(tenantId) {
+    const prop = getActiveProperty();
+    const isEdit = !!tenantId;
+    document.getElementById('modal-tenant-title').textContent = isEdit ? "Modifier locataire" : "Ajouter locataire";
+    document.getElementById('delete-tenant-btn').style.display = isEdit ? 'block' : 'none';
+
+    if (isEdit) {
+        const t = prop.tenants.find(x => x.id === tenantId);
+        document.getElementById('tenant-id').value = t.id;
+        document.getElementById('tenant-name').value = t.name;
+        document.getElementById('tenant-rent').value = t.rent;
+        document.getElementById('tenant-day').value = t.paymentDay;
+        document.getElementById('tenant-deposit').value = t.deposit;
+    } else {
+        document.getElementById('tenant-id').value = '';
+        document.getElementById('tenant-name').value = '';
+        document.getElementById('tenant-rent').value = '';
+        document.getElementById('tenant-day').value = '';
+        document.getElementById('tenant-deposit').value = '';
+    }
+    document.getElementById('modal-tenant').classList.add('show');
+}
+
+function openGuaranteeModal(tenantId) {
+    const prop = getActiveProperty();
+    const t = prop.tenants.find(x => x.id === tenantId);
+    document.getElementById('guarantee-tenant-id').value = t.id;
+    document.getElementById('guarantee-amount').value = t.deposit;
+    document.getElementById('modal-guarantee').classList.add('show');
+}
+
+function openExpensesModal(type) {
+    currentExpenseType = type;
+    document.getElementById('modal-expenses-title').textContent = type === 'fixed' ? 'Dépenses Fixes' : 'Dépenses Variables';
+    renderExpensesList();
+    document.getElementById('modal-expenses').classList.add('show');
+}
+
+function renderExpensesList() {
+    const prop = getActiveProperty();
+    const list = currentExpenseType === 'fixed' ? prop.fixedExpenses : prop.variableExpenses;
+    const container = document.getElementById('expenses-list');
+    container.innerHTML = '';
+
+    list.forEach(exp => {
+        const div = document.createElement('div');
+        div.className = 'expense-item';
+        div.innerHTML = `
+            <span class="expense-name">${exp.name}</span>
+            <div>
+                <span class="expense-amount">${exp.amount} €</span>
+                <button class="btn-delete-icon" onclick="deleteExpense('${exp.id}')">&times;</button>
+            </div>
+        `;
+        container.appendChild(div);
+    });
+
+    // Reset input
+    document.getElementById('new-expense-name').value = '';
+    document.getElementById('new-expense-amount').value = '';
+
+    // Remove old listener
+    const addBtn = document.getElementById('add-expense-btn');
+    const newBtn = addBtn.cloneNode(true);
+    addBtn.parentNode.replaceChild(newBtn, addBtn);
+
+    newBtn.onclick = () => {
+        const name = document.getElementById('new-expense-name').value;
+        const amount = parseFloat(document.getElementById('new-expense-amount').value) || 0;
+        if (!name || amount <= 0) return;
+
+        list.push({ id: 'exp_' + Date.now(), name, amount });
+        saveGlobalData();
+        renderExpensesList();
+        renderActiveProperty();
+    };
+}
+
+// Doit être globale pour être appelée par onclick
+window.deleteExpense = function(id) {
+    const prop = getActiveProperty();
+    if (currentExpenseType === 'fixed') {
+        prop.fixedExpenses = prop.fixedExpenses.filter(e => e.id !== id);
+    } else {
+        prop.variableExpenses = prop.variableExpenses.filter(e => e.id !== id);
+    }
+    saveGlobalData();
+    renderExpensesList();
+    renderActiveProperty();
+};
+
+window.deleteProperty = async function(id) {
+    if (confirm("Voulez-vous vraiment supprimer ce bien et toutes ses données ?")) {
+        if (currentUser) {
+            const { error } = await supabase.from('properties').delete().eq('id', id);
+            if (error) {
+                console.error("Erreur suppression:", error);
+                return alert("Erreur lors de la suppression.");
+            }
+        }
+        
+        appState.properties = appState.properties.filter(p => p.id !== id);
+        if (appState.properties.length > 0) {
+            appState.activePropertyId = appState.properties[0].id;
+        } else {
+            appState.activePropertyId = null;
+        }
+        saveGlobalData();
+        renderTabs();
+        
+        if (appState.properties.length > 0) {
+            renderActiveProperty();
+        } else {
+            document.getElementById('property-title').textContent = "Aucun bien";
+            document.getElementById('locataires-container').innerHTML = '';
+            document.getElementById('garanties-container').innerHTML = '';
+            document.getElementById('kpi-revenus').textContent = '0 €';
+            document.getElementById('kpi-depenses').textContent = '0 €';
+            document.getElementById('kpi-depenses-var').textContent = '0 €';
+            document.getElementById('kpi-cashflow').textContent = '0 €';
+            document.getElementById('kpi-taux').textContent = '0 %';
+            document.getElementById('kpi-progress').style.width = '0%';
+        }
+    }
+};

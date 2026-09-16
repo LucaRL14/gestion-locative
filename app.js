@@ -10,22 +10,97 @@ let appState = {
     properties: []
 };
 
+let currentDate = new Date();
 let currentMonth = '';
 let currentMonthKey = '';
 
-// Données initiales par défaut (un bien vide)
+// Statuts mensuels pré-remplis pour les mois passés
+const SEEDED_MONTHLY_STATUSES = {
+    '2026-02': { 't_jules': 'paid', 't_thomas': 'paid', 't_maxime': 'paid' },
+    '2026-03': { 't_jules': 'paid', 't_thomas': 'paid', 't_maxime': 'paid', 't_sarah': 'paid' },
+    '2026-04': { 't_jules': 'paid', 't_thomas': 'paid', 't_maxime': 'paid', 't_sarah': 'paid' },
+    '2026-05': { 't_jules': 'paid', 't_thomas': 'paid', 't_maxime': 'paid', 't_sarah': 'paid' }
+};
+
+// Données initiales réelles de la colocation
 const DEFAULT_PROPERTIES = [
     {
-        id: 'prop_' + Date.now(),
-        name: 'Mon Premier Bien',
+        id: 'prop_ransart',
+        name: 'Colocation Ransart',
         provisionCharges: 125,
-        tenants: [],
-        fixedExpenses: [],
-        variableExpenses: []
+        tenants: [
+            {
+                id: 't_jules',
+                name: 'Chambre 1 - Jules',
+                rent: 585,
+                paymentDay: 1,
+                deposit: 920,
+                history: [
+                    { month: '2026-02', label: 'Fév', status: 'paid', amount: 585 },
+                    { month: '2026-03', label: 'Mar', status: 'paid', amount: 585 },
+                    { month: '2026-04', label: 'Avr', status: 'paid', amount: 585 },
+                    { month: '2026-05', label: 'Mai', status: 'paid', amount: 585 }
+                ]
+            },
+            {
+                id: 't_thomas',
+                name: 'Chambre 2 - Thomas',
+                rent: 585,
+                paymentDay: 1,
+                deposit: 920,
+                history: [
+                    { month: '2026-02', label: 'Fév', status: 'paid', amount: 585 },
+                    { month: '2026-03', label: 'Mar', status: 'paid', amount: 585 },
+                    { month: '2026-04', label: 'Avr', status: 'paid', amount: 585 },
+                    { month: '2026-05', label: 'Mai', status: 'paid', amount: 585 }
+                ]
+            },
+            {
+                id: 't_maxime',
+                name: 'Chambre 3 - Maxime',
+                rent: 570,
+                paymentDay: 5,
+                deposit: 890,
+                history: [
+                    { month: '2026-02', label: 'Fév', status: 'paid', amount: 142.5 },
+                    { month: '2026-03', label: 'Mar', status: 'paid', amount: 570 },
+                    { month: '2026-04', label: 'Avr', status: 'paid', amount: 570 },
+                    { month: '2026-05', label: 'Mai', status: 'paid', amount: 570 }
+                ]
+            },
+            {
+                id: 't_sarah',
+                name: 'Chambre 4 - Sarah',
+                rent: 570,
+                paymentDay: 1,
+                deposit: 890,
+                history: [
+                    { month: '2026-03', label: 'Mar', status: 'paid', amount: 427.5 },
+                    { month: '2026-04', label: 'Avr', status: 'paid', amount: 570 },
+                    { month: '2026-05', label: 'Mai', status: 'paid', amount: 570 }
+                ]
+            }
+        ],
+        fixedExpenses: [
+            { id: 'exp_f1', name: 'Précompte immobilier (mensualisé)', amount: 67.48 },
+            { id: 'exp_f2', name: 'Assurance vie (mensualisée)', amount: 54.76 },
+            { id: 'exp_f3', name: 'Assurance incendie (mensualisée)', amount: 44.10 },
+            { id: 'exp_f4', name: 'ARAG protection juridique', amount: 4.92 },
+            { id: 'exp_f5', name: 'Crédit mensuel', amount: 614.00 }
+        ],
+        variableExpenses: [
+            { id: 'exp_v1', name: 'Eau', amount: 90.00 },
+            { id: 'exp_v2', name: 'Électricité', amount: 110.00 },
+            { id: 'exp_v3', name: 'Gaz', amount: 85.00 },
+            { id: 'exp_v4', name: 'Internet', amount: 50.00 },
+            { id: 'exp_v5', name: 'Nettoyage', amount: 132.00 },
+            { id: 'exp_v6', name: 'Netflix', amount: 10.99 },
+            { id: 'exp_v7', name: 'Abandon de recours', amount: 7.00 }
+        ]
     }
 ];
 
-// État mensuel des paiements (statut des locataires)
+// État mensuel des paiements pour le mois sélectionné
 let monthlyStatus = {}; // { tenantId: 'pending'|'paid'|'unpaid' }
 
 // --- Initialisation ---
@@ -34,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initAuth() {
-    // Bind UI buttons
+    // Boutons d'authentification
     document.getElementById('auth-signup-btn').onclick = handleSignUp;
     document.getElementById('auth-login-btn').onclick = handleLogin;
     document.getElementById('logout-btn').onclick = handleLogout;
@@ -53,13 +128,13 @@ function handleAuthSession(session) {
         currentUser = session.user;
         document.getElementById('modal-auth').style.display = 'none';
         document.getElementById('logout-btn').style.display = 'inline-flex';
-        initApp(); // Load data when auth is confirmed
+        initApp();
     } else {
         currentUser = null;
         document.getElementById('modal-auth').style.display = 'flex';
         document.getElementById('logout-btn').style.display = 'none';
         
-        // Clear UI data
+        // Vider l'interface en attendant la connexion
         appState.properties = [];
         appState.activePropertyId = null;
         renderTabs();
@@ -114,24 +189,49 @@ async function handleLogout() {
     await supabase.auth.signOut();
 }
 
-async function initApp() {
-    // Mois actuel
-    const now = new Date();
+// --- Navigation Temporelle ---
+
+function updateMonthDisplay() {
     const optionsMois = { month: 'long', year: 'numeric' };
-    const moisFormat = now.toLocaleDateString('fr-FR', optionsMois);
+    const moisFormat = currentDate.toLocaleDateString('fr-FR', optionsMois);
     currentMonth = moisFormat.charAt(0).toUpperCase() + moisFormat.slice(1);
     
-    const moisNum = String(now.getMonth() + 1).padStart(2, '0');
-    currentMonthKey = `${now.getFullYear()}-${moisNum}`;
+    const moisNum = String(currentDate.getMonth() + 1).padStart(2, '0');
+    currentMonthKey = `${currentDate.getFullYear()}-${moisNum}`;
 
-    document.getElementById('current-month-display').textContent = `Mois en cours : ${currentMonth}`;
+    const el = document.getElementById('current-month-display');
+    if (el) el.textContent = currentMonth;
+}
 
+function formatShortMonth(monthKey) {
+    const [year, month] = monthKey.split('-').map(Number);
+    const d = new Date(year, month - 1, 1);
+    const name = d.toLocaleDateString('fr-FR', { month: 'short' });
+    return name.charAt(0).toUpperCase() + name.slice(1).replace('.', '');
+}
+
+async function changeMonth(delta) {
+    currentDate.setMonth(currentDate.getMonth() + delta);
+    updateMonthDisplay();
+    await loadMonthlyStatus();
+    renderActiveProperty();
+}
+
+async function goToCurrentMonth() {
+    currentDate = new Date();
+    updateMonthDisplay();
+    await loadMonthlyStatus();
+    renderActiveProperty();
+}
+
+async function initApp() {
+    updateMonthDisplay();
     setupEventListeners();
 
-    // Chargement des données globales (biens, locataires, etc.)
+    // Chargement des données globales
     await loadGlobalData();
     
-    // Chargement du statut des paiements pour ce mois
+    // Chargement du statut pour ce mois
     await loadMonthlyStatus();
 
     renderTabs();
@@ -161,23 +261,23 @@ async function loadGlobalData() {
         appState.properties = data.map(dbProp => ({
             id: dbProp.id,
             name: dbProp.name,
-            provisionCharges: dbProp.provision_charges,
+            provisionCharges: Number(dbProp.provision_charges),
             tenants: dbProp.tenants || [],
             fixedExpenses: dbProp.fixed_expenses || [],
             variableExpenses: dbProp.variable_expenses || []
         }));
+
+        // Si le compte possédait le bien vide générique par défaut ("Mon Premier Bien" sans locataires), on le remplace par les données réelles
+        if (appState.properties.length === 1 && 
+            appState.properties[0].name === 'Mon Premier Bien' && 
+            appState.properties[0].tenants.length === 0) {
+            appState.properties = JSON.parse(JSON.stringify(DEFAULT_PROPERTIES));
+            await saveGlobalData();
+        }
     } else {
-        // App vierge (empty property default)
-        const emptyProp = {
-            id: 'prop_' + Date.now(),
-            name: 'Mon Premier Bien',
-            provisionCharges: 125,
-            tenants: [],
-            fixedExpenses: [],
-            variableExpenses: []
-        };
-        appState.properties = [emptyProp];
-        appState.activePropertyId = emptyProp.id;
+        // Nouveau compte : initialiser directement avec la colocation Ransart
+        appState.properties = JSON.parse(JSON.stringify(DEFAULT_PROPERTIES));
+        appState.activePropertyId = appState.properties[0].id;
         await saveGlobalData();
     }
 }
@@ -211,8 +311,10 @@ async function loadMonthlyStatus() {
         .eq('month_key', currentMonthKey)
         .single();
         
-    if (data) {
+    if (data && data.status_data) {
         monthlyStatus = data.status_data || {};
+    } else if (SEEDED_MONTHLY_STATUSES[currentMonthKey]) {
+        monthlyStatus = { ...SEEDED_MONTHLY_STATUSES[currentMonthKey] };
     } else {
         monthlyStatus = {};
     }
@@ -231,7 +333,8 @@ async function saveMonthlyStatus() {
     if (error) console.error("Erreur sauvegarde statut", error);
 }
 
-// --- Helpers ---
+// --- Helpers Métier ---
+
 function getActiveProperty() {
     return appState.properties.find(p => p.id === appState.activePropertyId);
 }
@@ -240,7 +343,34 @@ function getTenantStatus(tenantId) {
     return monthlyStatus[tenantId] || 'pending';
 }
 
-// --- Rendu ---
+function getTenantRentForMonth(tenant, monthKey) {
+    if (tenant.history) {
+        const h = tenant.history.find(x => x.month === monthKey);
+        if (h && typeof h.amount === 'number' && h.amount > 0) {
+            return h.amount;
+        }
+    }
+    return tenant.rent;
+}
+
+// Ajustement automatique du crédit selon la date (614 € avant sept 2026, 1 010 € à partir de sept 2026)
+function getEffectiveFixedExpenses(prop, monthKey) {
+    const [year, month] = (monthKey || currentMonthKey).split('-').map(Number);
+    const isPostSept2026 = (year > 2026 || (year === 2026 && month >= 9));
+
+    return (prop.fixedExpenses || []).map(exp => {
+        if (exp.name && exp.name.toLowerCase().includes('crédit')) {
+            if (isPostSept2026 && exp.amount === 614) {
+                return { ...exp, amount: 1010 };
+            } else if (!isPostSept2026 && exp.amount === 1010) {
+                return { ...exp, amount: 614 };
+            }
+        }
+        return exp;
+    });
+}
+
+// --- Rendu Interface ---
 
 function renderTabs() {
     const container = document.getElementById('property-tabs');
@@ -272,15 +402,17 @@ function renderActiveProperty() {
     let locatairesPayes = 0;
 
     prop.tenants.forEach(t => {
-        revenusAttendus += t.rent;
+        const tenantRent = getTenantRentForMonth(t, currentMonthKey);
+        revenusAttendus += tenantRent;
         const status = getTenantStatus(t.id);
         if (status === 'paid') {
-            revenusReels += t.rent;
+            revenusReels += tenantRent;
             locatairesPayes++;
         }
     });
 
-    const totalFixed = prop.fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const effectiveFixed = getEffectiveFixedExpenses(prop, currentMonthKey);
+    const totalFixed = effectiveFixed.reduce((sum, e) => sum + e.amount, 0);
     const totalVar = prop.variableExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     const provisionsRecues = locatairesPayes * prop.provisionCharges;
@@ -293,8 +425,8 @@ function renderActiveProperty() {
         : 0;
 
     // Mise à jour KPIs
-    document.getElementById('kpi-revenus').textContent = `${revenusReels} €`;
-    document.getElementById('kpi-revenus-attendu').textContent = `sur ${revenusAttendus} € attendus`;
+    document.getElementById('kpi-revenus').textContent = `${revenusReels.toFixed(2).replace('.00', '').replace('.', ',')} €`;
+    document.getElementById('kpi-revenus-attendu').textContent = `sur ${revenusAttendus.toFixed(2).replace('.00', '').replace('.', ',')} € attendus`;
     
     document.getElementById('kpi-depenses').textContent = `${totalFixed.toFixed(2).replace('.', ',')} €`;
     document.getElementById('kpi-depenses-var').textContent = `${totalVar.toFixed(2).replace('.', ',')} €`;
@@ -312,25 +444,31 @@ function renderActiveProperty() {
     document.getElementById('kpi-taux').textContent = `${tauxPaiement} %`;
     document.getElementById('kpi-progress').style.width = `${tauxPaiement}%`;
 
-    // Loyers
+    // Cartes Locataires
     const locatairesContainer = document.getElementById('locataires-container');
     locatairesContainer.innerHTML = '';
 
     prop.tenants.forEach((t, i) => {
         const status = getTenantStatus(t.id);
+        const currentRent = getTenantRentForMonth(t, currentMonthKey);
         let badgeClass = 'pending';
         let badgeText = '⏱️ En attente';
         if (status === 'paid') { badgeClass = 'paid'; badgeText = '✅ Payé'; }
         else if (status === 'unpaid') { badgeClass = 'unpaid'; badgeText = '❌ Impayé'; }
 
+        // Pastilles d'historique
         let historyHTML = '';
         if (t.history && t.history.length > 0) {
-            const dots = t.history.map(h => `
-                <div class="history-month" title="${h.month}">
-                    <span class="history-dot ${h.status}"></span>
-                    <span>${h.month}</span>
-                </div>
-            `).join('');
+            const dots = t.history.map(h => {
+                const label = h.label || formatShortMonth(h.month);
+                const statusLabel = h.status === 'paid' ? 'Payé' : (h.status === 'unpaid' ? 'Impayé' : 'En attente');
+                return `
+                    <div class="history-month" title="${h.month}: ${statusLabel} (${h.amount || t.rent} €)">
+                        <span class="history-dot ${h.status}"></span>
+                        <span>${label}</span>
+                    </div>
+                `;
+            }).join('');
             historyHTML = `
                 <div class="locataire-history">
                     <div class="history-title">Historique des paiements</div>
@@ -345,6 +483,10 @@ function renderActiveProperty() {
         card.className = 'locataire-card';
         card.style.animationDelay = `${i * 0.1}s`;
 
+        const rentDisplay = currentRent !== t.rent 
+            ? `${currentRent} € <span style="font-size:0.75rem; color: var(--text-secondary);">(prorata)</span>` 
+            : `${currentRent} €`;
+
         card.innerHTML = `
             <div class="locataire-header">
                 <div class="locataire-info">
@@ -353,7 +495,7 @@ function renderActiveProperty() {
                         <span>📅 Attendu le ${t.paymentDay} du mois</span>
                     </div>
                 </div>
-                <div class="locataire-amount">${t.rent} €</div>
+                <div class="locataire-amount">${rentDisplay}</div>
             </div>
             
             <div class="status-badge ${badgeClass}">
@@ -376,7 +518,7 @@ function renderActiveProperty() {
         locatairesContainer.appendChild(card);
     });
 
-    // Garanties
+    // Garanties locatives
     const garantiesContainer = document.getElementById('garanties-container');
     garantiesContainer.innerHTML = '';
     prop.tenants.forEach(t => {
@@ -397,15 +539,43 @@ function renderActiveProperty() {
 function setTenantStatus(tenantId, status) {
     monthlyStatus[tenantId] = status;
     saveMonthlyStatus();
+
+    // Mettre à jour l'historique visuel du locataire pour ce mois
+    const prop = getActiveProperty();
+    if (prop) {
+        const tenant = prop.tenants.find(t => t.id === tenantId);
+        if (tenant) {
+            if (!tenant.history) tenant.history = [];
+            const existing = tenant.history.find(h => h.month === currentMonthKey);
+            if (existing) {
+                existing.status = status;
+            } else {
+                tenant.history.push({
+                    month: currentMonthKey,
+                    label: formatShortMonth(currentMonthKey),
+                    status: status,
+                    amount: tenant.rent
+                });
+                tenant.history.sort((a, b) => a.month.localeCompare(b.month));
+            }
+            saveGlobalData();
+        }
+    }
+
     renderActiveProperty();
 }
 
 // --- Événements et Modales ---
 
 function setupEventListeners() {
-    // Reset
+    // Navigation temporelle
+    document.getElementById('prev-month-btn').onclick = () => changeMonth(-1);
+    document.getElementById('next-month-btn').onclick = () => changeMonth(1);
+    document.getElementById('today-month-btn').onclick = () => goToCurrentMonth();
+
+    // Reset du mois
     document.getElementById('reset-data-btn').onclick = () => {
-        if (confirm("Réinitialiser tous les statuts de paiement du mois en cours ?")) {
+        if (confirm(`Réinitialiser les statuts de paiement pour ${currentMonth} ?`)) {
             monthlyStatus = {};
             saveMonthlyStatus();
             renderActiveProperty();
@@ -467,7 +637,8 @@ function setupEventListeners() {
         } else {
             prop.tenants.push({
                 id: 't_' + Date.now(),
-                name, rent, paymentDay: day, deposit
+                name, rent, paymentDay: day, deposit,
+                history: []
             });
         }
         saveGlobalData();
@@ -557,18 +728,17 @@ function renderExpensesList() {
         div.innerHTML = `
             <span class="expense-name">${exp.name}</span>
             <div>
-                <span class="expense-amount">${exp.amount} €</span>
+                <span class="expense-amount">${exp.amount.toFixed(2).replace('.', ',')} €</span>
                 <button class="btn-delete-icon" onclick="deleteExpense('${exp.id}')">&times;</button>
             </div>
         `;
         container.appendChild(div);
     });
 
-    // Reset input
+    // Réinitialiser les champs d'ajout
     document.getElementById('new-expense-name').value = '';
     document.getElementById('new-expense-amount').value = '';
 
-    // Remove old listener
     const addBtn = document.getElementById('add-expense-btn');
     const newBtn = addBtn.cloneNode(true);
     addBtn.parentNode.replaceChild(newBtn, addBtn);
@@ -585,7 +755,6 @@ function renderExpensesList() {
     };
 }
 
-// Doit être globale pour être appelée par onclick
 window.deleteExpense = function(id) {
     const prop = getActiveProperty();
     if (currentExpenseType === 'fixed') {

@@ -1,0 +1,15 @@
+# Notes de travail et spécifications
+Instructions.md
+gestion_loc.md
+gestion_loc_update.md
+depense_update.md
+application_update.md
+application_update_bis.md
+app-life.md
+app-vierge.js
+
+# Fichiers système & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

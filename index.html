@@ -25,7 +25,12 @@
             <div class="header-content">
                 <div>
                     <h1 id="property-title">Gestion locative</h1>
-                    <p class="subtitle" id="current-month-display">Mois en cours...</p>
+                    <div class="month-navigation">
+                        <button id="prev-month-btn" class="btn btn-icon" title="Mois précédent">◀</button>
+                        <span class="subtitle month-label" id="current-month-display">Mois en cours...</span>
+                        <button id="next-month-btn" class="btn btn-icon" title="Mois suivant">▶</button>
+                        <button id="today-month-btn" class="btn btn-xs btn-outline" title="Revenir au mois actuel">Aujourd'hui</button>
+                    </div>
                 </div>
                 <div class="actions">
                     <button id="reset-data-btn" class="btn btn-outline" title="Réinitialiser le mois">🔄 Réinitialiser le mois</button>

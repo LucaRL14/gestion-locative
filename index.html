@@ -33,6 +33,7 @@
                     </div>
                 </div>
                 <div class="actions">
+                    <button id="login-open-btn" class="btn btn-primary" style="display:none;" title="Se connecter">🔑 Connexion</button>
                     <button id="reset-data-btn" class="btn btn-outline" title="Réinitialiser le mois">🔄 Réinitialiser le mois</button>
                     <button id="logout-btn" class="btn btn-outline" style="display:none; border-color: var(--accent-danger); color: var(--accent-danger);" title="Se déconnecter">🚪 Déconnexion</button>
                 </div>
@@ -217,11 +218,14 @@
                 <button id="save-guarantee-btn" class="btn btn-primary">Enregistrer</button>
             </div>
         </div>
+    </div>
+
     <!-- Modal Auth (Login/Signup) -->
-    <div id="modal-auth" class="modal" style="display: none;">
+    <div id="modal-auth" class="modal">
         <div class="modal-content modal-sm">
             <div class="modal-header">
                 <h2>Connexion / Inscription</h2>
+                <span class="close-modal" id="close-auth-modal">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="form-group">

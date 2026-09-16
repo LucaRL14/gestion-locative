@@ -105,6 +105,8 @@ let monthlyStatus = {}; // { tenantId: 'pending'|'paid'|'unpaid' }
 
 // --- Initialisation ---
 document.addEventListener('DOMContentLoaded', () => {
+    updateMonthDisplay();
+    setupEventListeners();
     initAuth();
 });
 
@@ -113,6 +115,12 @@ function initAuth() {
     document.getElementById('auth-signup-btn').onclick = handleSignUp;
     document.getElementById('auth-login-btn').onclick = handleLogin;
     document.getElementById('logout-btn').onclick = handleLogout;
+    
+    const loginOpenBtn = document.getElementById('login-open-btn');
+    if (loginOpenBtn) loginOpenBtn.onclick = () => openAuthModal();
+
+    const closeAuthBtn = document.getElementById('close-auth-modal');
+    if (closeAuthBtn) closeAuthBtn.onclick = () => closeAuthModal();
 
     supabase.auth.getSession().then(({ data: { session } }) => {
         handleAuthSession(session);
@@ -123,65 +131,131 @@ function initAuth() {
     });
 }
 
+function openAuthModal(errorMessage) {
+    const modal = document.getElementById('modal-auth');
+    if (modal) {
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+    }
+    const errEl = document.getElementById('auth-error');
+    if (errEl) {
+        if (errorMessage) {
+            errEl.textContent = errorMessage;
+            errEl.style.display = 'block';
+        } else {
+            errEl.style.display = 'none';
+        }
+    }
+}
+
+function closeAuthModal() {
+    const modal = document.getElementById('modal-auth');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+    }
+}
+
+function requireAuth() {
+    if (!currentUser) {
+        openAuthModal("Veuillez vous connecter ou vous inscrire pour effectuer cette action.");
+        return false;
+    }
+    return true;
+}
+
 function handleAuthSession(session) {
     if (session) {
         currentUser = session.user;
-        document.getElementById('modal-auth').style.display = 'none';
+        closeAuthModal();
         document.getElementById('logout-btn').style.display = 'inline-flex';
+        const loginOpenBtn = document.getElementById('login-open-btn');
+        if (loginOpenBtn) loginOpenBtn.style.display = 'none';
         initApp();
     } else {
         currentUser = null;
-        document.getElementById('modal-auth').style.display = 'flex';
         document.getElementById('logout-btn').style.display = 'none';
+        const loginOpenBtn = document.getElementById('login-open-btn');
+        if (loginOpenBtn) loginOpenBtn.style.display = 'inline-flex';
         
-        // Vider l'interface en attendant la connexion
+        // Ouvrir automatiquement la boîte de connexion
+        openAuthModal();
+
+        // Afficher un message explicite dans l'interface
         appState.properties = [];
         appState.activePropertyId = null;
         renderTabs();
-        document.getElementById('property-title').textContent = "Veuillez vous connecter";
-        document.getElementById('locataires-container').innerHTML = '';
+        document.getElementById('property-title').textContent = "Gestion locative";
+        document.getElementById('locataires-container').innerHTML = `
+            <div style="grid-column: 1/-1; text-align: center; padding: 3rem 1.5rem; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px dashed var(--border-color);">
+                <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔒</div>
+                <h3 style="font-size: 1.3rem; margin-bottom: 0.5rem;">Veuillez vous connecter</h3>
+                <p style="color: var(--text-secondary); max-width: 450px; margin: 0 auto 1.5rem auto;">
+                    Connectez-vous ou créez votre compte en quelques secondes pour accéder à vos biens immobiliers et suivre vos loyers.
+                </p>
+                <button class="btn btn-primary" onclick="openAuthModal()">🔑 Se connecter / S'inscrire</button>
+            </div>
+        `;
         document.getElementById('garanties-container').innerHTML = '';
         document.getElementById('kpi-revenus').textContent = '0 €';
+        document.getElementById('kpi-revenus-attendu').textContent = 'sur 0 € attendus';
         document.getElementById('kpi-depenses').textContent = '0 €';
         document.getElementById('kpi-depenses-var').textContent = '0 €';
         document.getElementById('kpi-cashflow').textContent = '0 €';
+        document.getElementById('kpi-delta-charges').textContent = 'Delta charges: 0 €';
         document.getElementById('kpi-taux').textContent = '0 %';
         document.getElementById('kpi-progress').style.width = '0%';
     }
 }
 
 async function handleSignUp() {
-    const email = document.getElementById('auth-email').value;
+    const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const errEl = document.getElementById('auth-error');
     const msgEl = document.getElementById('auth-message');
     errEl.style.display = 'none';
     msgEl.style.display = 'none';
 
-    if (!email || !password) return (errEl.textContent = 'Email et mot de passe requis', errEl.style.display = 'block');
+    if (!email || !password) {
+        errEl.textContent = 'Email et mot de passe requis';
+        errEl.style.display = 'block';
+        return;
+    }
 
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) {
         errEl.textContent = error.message;
         errEl.style.display = 'block';
     } else {
-        msgEl.textContent = 'Inscription réussie ! Vous êtes connecté.';
-        msgEl.style.display = 'block';
+        if (data.session) {
+            msgEl.textContent = 'Inscription réussie ! Vous êtes connecté.';
+            msgEl.style.display = 'block';
+            handleAuthSession(data.session);
+        } else {
+            msgEl.textContent = 'Compte créé ! Veuillez vous connecter avec vos identifiants.';
+            msgEl.style.display = 'block';
+        }
     }
 }
 
 async function handleLogin() {
-    const email = document.getElementById('auth-email').value;
+    const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const errEl = document.getElementById('auth-error');
     errEl.style.display = 'none';
 
-    if (!email || !password) return (errEl.textContent = 'Email et mot de passe requis', errEl.style.display = 'block');
+    if (!email || !password) {
+        errEl.textContent = 'Email et mot de passe requis';
+        errEl.style.display = 'block';
+        return;
+    }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
         errEl.textContent = error.message;
         errEl.style.display = 'block';
+    } else if (data.session) {
+        handleAuthSession(data.session);
     }
 }
 
@@ -226,7 +300,6 @@ async function goToCurrentMonth() {
 
 async function initApp() {
     updateMonthDisplay();
-    setupEventListeners();
 
     // Chargement des données globales
     await loadGlobalData();
@@ -254,6 +327,9 @@ async function loadGlobalData() {
         
     if (error) {
         console.error("Erreur de chargement:", error);
+        if (error.code === '42P01') {
+            alert("Les tables Supabase ne semblent pas encore créées. Veuillez exécuter le script schema.sql dans le SQL Editor de votre projet Supabase.");
+        }
         return;
     }
     
@@ -537,6 +613,8 @@ function renderActiveProperty() {
 }
 
 function setTenantStatus(tenantId, status) {
+    if (!requireAuth()) return;
+
     monthlyStatus[tenantId] = status;
     saveMonthlyStatus();
 
@@ -569,116 +647,177 @@ function setTenantStatus(tenantId, status) {
 
 function setupEventListeners() {
     // Navigation temporelle
-    document.getElementById('prev-month-btn').onclick = () => changeMonth(-1);
-    document.getElementById('next-month-btn').onclick = () => changeMonth(1);
-    document.getElementById('today-month-btn').onclick = () => goToCurrentMonth();
+    const prevBtn = document.getElementById('prev-month-btn');
+    if (prevBtn) prevBtn.onclick = () => changeMonth(-1);
+
+    const nextBtn = document.getElementById('next-month-btn');
+    if (nextBtn) nextBtn.onclick = () => changeMonth(1);
+
+    const todayBtn = document.getElementById('today-month-btn');
+    if (todayBtn) todayBtn.onclick = () => goToCurrentMonth();
 
     // Reset du mois
-    document.getElementById('reset-data-btn').onclick = () => {
-        if (confirm(`Réinitialiser les statuts de paiement pour ${currentMonth} ?`)) {
-            monthlyStatus = {};
-            saveMonthlyStatus();
-            renderActiveProperty();
-        }
-    };
+    const resetBtn = document.getElementById('reset-data-btn');
+    if (resetBtn) {
+        resetBtn.onclick = () => {
+            if (!requireAuth()) return;
+            if (confirm(`Réinitialiser les statuts de paiement pour ${currentMonth} ?`)) {
+                monthlyStatus = {};
+                saveMonthlyStatus();
+                renderActiveProperty();
+            }
+        };
+    }
 
     // Fermeture modales
     document.querySelectorAll('.close-modal, .close-modal-btn').forEach(btn => {
         btn.onclick = () => {
-            document.querySelectorAll('.modal').forEach(m => m.classList.remove('show'));
+            document.querySelectorAll('.modal').forEach(m => {
+                m.classList.remove('show');
+                m.style.display = 'none';
+            });
         };
     });
 
     // Modal Propriété
-    document.getElementById('add-property-btn').onclick = () => {
-        document.getElementById('modal-property-title').textContent = "Ajouter un bien";
-        document.getElementById('prop-name').value = '';
-        document.getElementById('prop-provision').value = '125';
-        document.getElementById('modal-property').classList.add('show');
-    };
-
-    document.getElementById('save-property-btn').onclick = () => {
-        const name = document.getElementById('prop-name').value;
-        const provision = parseFloat(document.getElementById('prop-provision').value) || 0;
-        if (!name) return alert('Le nom est requis');
-
-        const newProp = {
-            id: 'prop_' + Date.now(),
-            name,
-            provisionCharges: provision,
-            tenants: [],
-            fixedExpenses: [],
-            variableExpenses: []
+    const addPropBtn = document.getElementById('add-property-btn');
+    if (addPropBtn) {
+        addPropBtn.onclick = () => {
+            if (!requireAuth()) return;
+            document.getElementById('modal-property-title').textContent = "Ajouter un bien";
+            document.getElementById('prop-name').value = '';
+            document.getElementById('prop-provision').value = '125';
+            const modal = document.getElementById('modal-property');
+            modal.classList.add('show');
+            modal.style.display = 'flex';
         };
-        appState.properties.push(newProp);
-        appState.activePropertyId = newProp.id;
-        saveGlobalData();
-        document.getElementById('modal-property').classList.remove('show');
-        renderTabs();
-        renderActiveProperty();
-    };
+    }
+
+    const savePropBtn = document.getElementById('save-property-btn');
+    if (savePropBtn) {
+        savePropBtn.onclick = () => {
+            if (!requireAuth()) return;
+            const name = document.getElementById('prop-name').value;
+            const provision = parseFloat(document.getElementById('prop-provision').value) || 0;
+            if (!name) return alert('Le nom est requis');
+
+            const newProp = {
+                id: 'prop_' + Date.now(),
+                name,
+                provisionCharges: provision,
+                tenants: [],
+                fixedExpenses: [],
+                variableExpenses: []
+            };
+            appState.properties.push(newProp);
+            appState.activePropertyId = newProp.id;
+            saveGlobalData();
+            const modal = document.getElementById('modal-property');
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            renderTabs();
+            renderActiveProperty();
+        };
+    }
 
     // Modal Locataire
-    document.getElementById('add-tenant-btn').onclick = () => openTenantModal(null);
+    const addTenantBtn = document.getElementById('add-tenant-btn');
+    if (addTenantBtn) {
+        addTenantBtn.onclick = () => {
+            if (!requireAuth()) return;
+            openTenantModal(null);
+        };
+    }
 
-    document.getElementById('save-tenant-btn').onclick = () => {
-        const prop = getActiveProperty();
-        const id = document.getElementById('tenant-id').value;
-        const name = document.getElementById('tenant-name').value;
-        const rent = parseFloat(document.getElementById('tenant-rent').value) || 0;
-        const day = parseInt(document.getElementById('tenant-day').value) || 1;
-        const deposit = parseFloat(document.getElementById('tenant-deposit').value) || 0;
-
-        if (!name) return alert('Nom requis');
-
-        if (id) {
-            const t = prop.tenants.find(x => x.id === id);
-            t.name = name; t.rent = rent; t.paymentDay = day; t.deposit = deposit;
-        } else {
-            prop.tenants.push({
-                id: 't_' + Date.now(),
-                name, rent, paymentDay: day, deposit,
-                history: []
-            });
-        }
-        saveGlobalData();
-        document.getElementById('modal-tenant').classList.remove('show');
-        renderActiveProperty();
-    };
-
-    document.getElementById('delete-tenant-btn').onclick = () => {
-        const id = document.getElementById('tenant-id').value;
-        if (confirm("Supprimer ce locataire ?")) {
+    const saveTenantBtn = document.getElementById('save-tenant-btn');
+    if (saveTenantBtn) {
+        saveTenantBtn.onclick = () => {
+            if (!requireAuth()) return;
             const prop = getActiveProperty();
-            prop.tenants = prop.tenants.filter(t => t.id !== id);
+            const id = document.getElementById('tenant-id').value;
+            const name = document.getElementById('tenant-name').value;
+            const rent = parseFloat(document.getElementById('tenant-rent').value) || 0;
+            const day = parseInt(document.getElementById('tenant-day').value) || 1;
+            const deposit = parseFloat(document.getElementById('tenant-deposit').value) || 0;
+
+            if (!name) return alert('Nom requis');
+
+            if (id) {
+                const t = prop.tenants.find(x => x.id === id);
+                t.name = name; t.rent = rent; t.paymentDay = day; t.deposit = deposit;
+            } else {
+                prop.tenants.push({
+                    id: 't_' + Date.now(),
+                    name, rent, paymentDay: day, deposit,
+                    history: []
+                });
+            }
             saveGlobalData();
-            document.getElementById('modal-tenant').classList.remove('show');
+            const modal = document.getElementById('modal-tenant');
+            modal.classList.remove('show');
+            modal.style.display = 'none';
             renderActiveProperty();
-        }
-    };
+        };
+    }
+
+    const delTenantBtn = document.getElementById('delete-tenant-btn');
+    if (delTenantBtn) {
+        delTenantBtn.onclick = () => {
+            if (!requireAuth()) return;
+            const id = document.getElementById('tenant-id').value;
+            if (confirm("Supprimer ce locataire ?")) {
+                const prop = getActiveProperty();
+                prop.tenants = prop.tenants.filter(t => t.id !== id);
+                saveGlobalData();
+                const modal = document.getElementById('modal-tenant');
+                modal.classList.remove('show');
+                modal.style.display = 'none';
+                renderActiveProperty();
+            }
+        };
+    }
 
     // Modal Garanties
-    document.getElementById('save-guarantee-btn').onclick = () => {
-        const prop = getActiveProperty();
-        const id = document.getElementById('guarantee-tenant-id').value;
-        const deposit = parseFloat(document.getElementById('guarantee-amount').value) || 0;
-        const t = prop.tenants.find(x => x.id === id);
-        if (t) t.deposit = deposit;
-        saveGlobalData();
-        document.getElementById('modal-guarantee').classList.remove('show');
-        renderActiveProperty();
-    };
+    const saveGuarBtn = document.getElementById('save-guarantee-btn');
+    if (saveGuarBtn) {
+        saveGuarBtn.onclick = () => {
+            if (!requireAuth()) return;
+            const prop = getActiveProperty();
+            const id = document.getElementById('guarantee-tenant-id').value;
+            const deposit = parseFloat(document.getElementById('guarantee-amount').value) || 0;
+            const t = prop.tenants.find(x => x.id === id);
+            if (t) t.deposit = deposit;
+            saveGlobalData();
+            const modal = document.getElementById('modal-guarantee');
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            renderActiveProperty();
+        };
+    }
 
     // Modal Dépenses (Fixes)
-    document.getElementById('btn-edit-fixed-expenses').onclick = () => openExpensesModal('fixed');
+    const btnFixed = document.getElementById('btn-edit-fixed-expenses');
+    if (btnFixed) {
+        btnFixed.onclick = () => {
+            if (!requireAuth()) return;
+            openExpensesModal('fixed');
+        };
+    }
     
     // Modal Dépenses (Variables)
-    document.getElementById('btn-edit-variable-expenses').onclick = () => openExpensesModal('variable');
+    const btnVar = document.getElementById('btn-edit-variable-expenses');
+    if (btnVar) {
+        btnVar.onclick = () => {
+            if (!requireAuth()) return;
+            openExpensesModal('variable');
+        };
+    }
 }
 
 let currentExpenseType = 'fixed';
 
 function openTenantModal(tenantId) {
+    if (!requireAuth()) return;
     const prop = getActiveProperty();
     const isEdit = !!tenantId;
     document.getElementById('modal-tenant-title').textContent = isEdit ? "Modifier locataire" : "Ajouter locataire";
@@ -698,22 +837,30 @@ function openTenantModal(tenantId) {
         document.getElementById('tenant-day').value = '';
         document.getElementById('tenant-deposit').value = '';
     }
-    document.getElementById('modal-tenant').classList.add('show');
+    const modal = document.getElementById('modal-tenant');
+    modal.classList.add('show');
+    modal.style.display = 'flex';
 }
 
 function openGuaranteeModal(tenantId) {
+    if (!requireAuth()) return;
     const prop = getActiveProperty();
     const t = prop.tenants.find(x => x.id === tenantId);
     document.getElementById('guarantee-tenant-id').value = t.id;
     document.getElementById('guarantee-amount').value = t.deposit;
-    document.getElementById('modal-guarantee').classList.add('show');
+    const modal = document.getElementById('modal-guarantee');
+    modal.classList.add('show');
+    modal.style.display = 'flex';
 }
 
 function openExpensesModal(type) {
+    if (!requireAuth()) return;
     currentExpenseType = type;
     document.getElementById('modal-expenses-title').textContent = type === 'fixed' ? 'Dépenses Fixes' : 'Dépenses Variables';
     renderExpensesList();
-    document.getElementById('modal-expenses').classList.add('show');
+    const modal = document.getElementById('modal-expenses');
+    modal.classList.add('show');
+    modal.style.display = 'flex';
 }
 
 function renderExpensesList() {
@@ -744,6 +891,7 @@ function renderExpensesList() {
     addBtn.parentNode.replaceChild(newBtn, addBtn);
 
     newBtn.onclick = () => {
+        if (!requireAuth()) return;
         const name = document.getElementById('new-expense-name').value;
         const amount = parseFloat(document.getElementById('new-expense-amount').value) || 0;
         if (!name || amount <= 0) return;
@@ -756,6 +904,7 @@ function renderExpensesList() {
 }
 
 window.deleteExpense = function(id) {
+    if (!requireAuth()) return;
     const prop = getActiveProperty();
     if (currentExpenseType === 'fixed') {
         prop.fixedExpenses = prop.fixedExpenses.filter(e => e.id !== id);
@@ -768,6 +917,7 @@ window.deleteExpense = function(id) {
 };
 
 window.deleteProperty = async function(id) {
+    if (!requireAuth()) return;
     if (confirm("Voulez-vous vraiment supprimer ce bien et toutes ses données ?")) {
         if (currentUser) {
             const { error } = await supabase.from('properties').delete().eq('id', id);
@@ -801,3 +951,5 @@ window.deleteProperty = async function(id) {
         }
     }
 };
+
+window.openAuthModal = openAuthModal;
